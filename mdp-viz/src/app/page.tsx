@@ -7,6 +7,7 @@ import TerminalPie from "@/components/TerminalPie";
 import MDPConfigurator from "@/components/MDPConfigurator";
 import PresetSelector from "@/components/PresetSelector";
 import ResultsInterpreter from "@/components/ResultsInterpreter";
+import AgentOptimizer from "@/components/AgentOptimizer";
 import { type MDP } from "@/types/mdp";
 import { type PresetExample } from "@/lib/presets";
 import { runMonteCarlo } from "@/lib/sim";
@@ -44,6 +45,12 @@ export default function Home() {
     setMdp(preset.mdp);
     setStart(preset.mdp.states[0]);
     setLoadedPreset(preset.name);
+  }, []);
+
+  const handleOptimizedMdp = useCallback((optimizedMdp: MDP) => {
+    console.log("Page: Received optimized MDP", optimizedMdp);
+    setMdp(optimizedMdp);
+    setLoadedPreset(null);
   }, []);
 
   function handleSim() {
@@ -307,6 +314,18 @@ export default function Home() {
             </div>
           </div>
         </>
+      )}
+
+      {/* Agent Optimizer - Only show after all Monte Carlo results */}
+      {mdp && result && (
+        <section className="space-y-4">
+          <AgentOptimizer 
+            mdp={mdp} 
+            startState={start}
+            baselineResult={result}
+            onOptimizedMdp={handleOptimizedMdp}
+          />
+        </section>
       )}
     </main>
   );
