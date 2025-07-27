@@ -183,7 +183,7 @@ export default function ResultsInterpreter({ result, mdp }: ResultsInterpreterPr
         <div className="bg-white p-4 rounded-lg border border-gray-200">
           <h5 className="font-semibold text-gray-800 mb-2">Simulation Quality</h5>
           <p className="text-sm text-gray-600">
-            Based on {result.episodes} episodes, this provides a {result.episodes > 1000 ? "very reliable" : result.episodes > 500 ? "reliable" : "preliminary"} estimate of the MDP's behavior.
+            Based on {result.episodes} episodes, this provides a {result.episodes > 1000 ? "very reliable" : result.episodes > 500 ? "reliable" : "preliminary"} estimate of the MDP&apos;s behavior.
           </p>
         </div>
       </div>

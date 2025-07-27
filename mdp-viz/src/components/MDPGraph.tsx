@@ -11,7 +11,7 @@ export default function MDPGraph({ mdp }: { mdp: MDP }) {
 
     // Create nodes with better styling and larger size for better spacing
     const nodes = new DataSet<Node>(
-      mdp.states.map((s, index) => ({
+      mdp.states.map((s) => ({
         id: s,
         label: s,
         shape: "circle",
@@ -141,7 +141,7 @@ export default function MDPGraph({ mdp }: { mdp: MDP }) {
     );
 
     // Add event listeners for better UX
-    network.on("stabilizationProgress", function(params) {
+    network.on("stabilizationProgress", function() {
       // Optional: show loading progress
     });
 

@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { type MDP, type Transition, validateTransitionMass } from "@/types/mdp";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { type MDP, validateTransitionMass } from "@/types/mdp";
 
 interface MDPConfiguratorProps {
   onMDPChange: (mdp: MDP | null) => void;
@@ -110,7 +110,7 @@ export default function MDPConfigurator({ onMDPChange, onError, mdp: externalMdp
   }, [externalMdp]);
 
   // Enhanced validation function
-  const validateConfiguration = (): ValidationError[] => {
+  const validateConfiguration = useCallback((): ValidationError[] => {
     const errors: ValidationError[] = [];
     
     // Check for empty states/actions
@@ -188,7 +188,7 @@ export default function MDPConfigurator({ onMDPChange, onError, mdp: externalMdp
     }
     
     return errors;
-  };
+  }, [states, actions, gamma, transitions]);
 
   // Update MDP when configuration changes
   useEffect(() => {
@@ -242,11 +242,11 @@ export default function MDPConfigurator({ onMDPChange, onError, mdp: externalMdp
       onError(null);
       onMDPChange(mdp);
       console.log("MDPConfigurator: Updated MDP", mdp);
-    } catch (error) {
+    } catch {
       onError("Invalid MDP configuration");
       onMDPChange(null);
     }
-  }, [states, actions, transitions, gamma]);
+  }, [states, actions, transitions, gamma, validateConfiguration, onError, onMDPChange]);
 
   const addState = () => {
     const newState = `S${states.length}`;
@@ -401,7 +401,7 @@ export default function MDPConfigurator({ onMDPChange, onError, mdp: externalMdp
     setTransitions(newTransitions);
   };
 
-  const updateTransition = (state: string, action: string, index: number, field: keyof TransitionConfig, value: any) => {
+  const updateTransition = (state: string, action: string, index: number, field: keyof TransitionConfig, value: string | number) => {
     const newTransitions = { ...transitions };
     if (!newTransitions[state]) newTransitions[state] = {};
     if (!newTransitions[state][action]) newTransitions[state][action] = [];
