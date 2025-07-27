@@ -42,17 +42,17 @@ export default function DistributionChart({ values, bins = 30 }: { values: numbe
 
   return (
     <div className="w-full">
-      <div className="h-72">
+      <div className="h-96">
         <ResponsiveContainer>
-          <BarChart data={data}>
+          <BarChart data={data} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis 
               dataKey="x" 
               tickFormatter={(v) => v.toFixed(2)}
-              label={{ value: "Total Reward", position: "insideBottom", offset: -10 }}
+              label={{ value: "Total Reward", position: "insideBottom", offset: -40 }}
             />
             <YAxis 
-              label={{ value: "Frequency", angle: -90, position: "insideLeft" }}
+              label={{ value: "Frequency", angle: -90, position: "insideLeft", offset: 0 }}
             />
             <Tooltip 
               formatter={(value: number, name: string) => [

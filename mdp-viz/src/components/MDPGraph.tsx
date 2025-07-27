@@ -43,14 +43,16 @@ export default function MDPGraph({ mdp }: { mdp: MDP }) {
             hover: "#4B5563",
           },
           font: { 
-            size: 12, 
+            size: 14, 
             face: "Arial",
             color: "#374151",
-            strokeWidth: 2,
-            strokeColor: "white"
+            strokeWidth: 3,
+            strokeColor: "white",
+            align: "middle"
           },
           width: 2,
           selectionWidth: 3,
+          length: 200,
         }));
       })
     );
@@ -64,7 +66,7 @@ export default function MDPGraph({ mdp }: { mdp: MDP }) {
           barnesHut: {
             gravitationalConstant: -2000,
             centralGravity: 0.3,
-            springLength: 150,
+            springLength: 200,
             springConstant: 0.04,
             damping: 0.09,
           }
@@ -85,6 +87,8 @@ export default function MDPGraph({ mdp }: { mdp: MDP }) {
         layout: {
           improvedLayout: true,
         },
+        height: "100%",
+        width: "100%",
       }
     );
 
@@ -101,10 +105,14 @@ export default function MDPGraph({ mdp }: { mdp: MDP }) {
   }, [mdp]);
 
   return (
-    <div className="w-full">
-      <div ref={ref} style={{ height: 500, width: "100%" }} />
-      <div className="mt-2 text-sm text-gray-600 text-center">
-        <p>States: {mdp.states.join(", ")} | Actions: {mdp.actions.join(", ")} | γ: {mdp.gamma ?? 1.0}</p>
+    <div className="w-full space-y-4">
+      <div ref={ref} style={{ height: 600, width: "100%", minHeight: "600px" }} />
+      <div className="text-sm text-gray-600 text-center bg-gray-50 p-3 rounded-lg border border-gray-200">
+        <p className="font-medium">
+          <span className="text-blue-600">States:</span> {mdp.states.join(", ")} | 
+          <span className="text-green-600"> Actions:</span> {mdp.actions.join(", ")} | 
+          <span className="text-purple-600"> γ:</span> {mdp.gamma ?? 1.0}
+        </p>
       </div>
     </div>
   );

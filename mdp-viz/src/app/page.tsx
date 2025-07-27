@@ -1,50 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useCallback } from "react";
 import MDPGraph from "@/components/MDPGraph";
 import DistributionChart from "@/components/DistributionChart";
 import TerminalPie from "@/components/TerminalPie";
-import { mdpSchema, type MDP, validateTransitionMass } from "@/types/mdp";
+import MDPConfigurator from "@/components/MDPConfigurator";
+import { type MDP } from "@/types/mdp";
 import { runMonteCarlo } from "@/lib/sim";
 
-const SAMPLE = `{
-  "states": ["S0", "S1", "S2", "S3"],
-  "actions": ["a", "b"],
-  "gamma": 0.95,
-  "transitions": {
-    "S0|a": [
-      { "nextState": "S1", "probability": 0.9, "reward": 1 },
-      { "nextState": "S2", "probability": 0.1, "reward": 0 }
-    ],
-    "S0|b": [
-      { "nextState": "S1", "probability": 0.4, "reward": 0 },
-      { "nextState": "S3", "probability": 0.6, "reward": 2 }
-    ],
-    "S1|a": [
-      { "nextState": "S3", "probability": 1.0, "reward": 0 }
-    ],
-    "S1|b": [
-      { "nextState": "S0", "probability": 1.0, "reward": 0 }
-    ],
-    "S2|a": [
-      { "nextState": "S2", "probability": 1.0, "reward": 0 }
-    ],
-    "S2|b": [
-      { "nextState": "S3", "probability": 1.0, "reward": 0 }
-    ],
-    "S3|a": [
-      { "nextState": "S0", "probability": 0.5, "reward": 0 },
-      { "nextState": "S3", "probability": 0.5, "reward": 0 }
-    ],
-    "S3|b": [
-      { "nextState": "S0", "probability": 0.5, "reward": 0 },
-      { "nextState": "S3", "probability": 0.5, "reward": 0 }
-    ]
-  }
-}`;
-
 export default function Home() {
-  const [json, setJson] = useState(SAMPLE);
   const [mdp, setMdp] = useState<MDP | null>(null);
   const [start, setStart] = useState("S0");
   const [episodes, setEpisodes] = useState(1000);
@@ -55,24 +19,15 @@ export default function Home() {
 
   const canSim = Boolean(mdp && mdp.states.includes(start));
 
-  function handleRender() {
+  const handleMDPChange = useCallback((newMdp: MDP | null) => {
+    console.log("Page: Received MDP change", newMdp);
     setError(null);
     setResult(null);
-    try {
-      const parsed = mdpSchema.parse(JSON.parse(json));
-      const massErrs = validateTransitionMass(parsed);
-      if (massErrs.length) {
-        setError("Probability mass errors: " + massErrs.join(", "));
-        setMdp(null);
-        return;
-      }
-      setMdp(parsed);
-      if (!parsed.states.includes(start)) setStart(parsed.states[0]);
-    } catch (e: any) {
-      setError(e?.message ?? "Invalid JSON/MDP");
-      setMdp(null);
+    setMdp(newMdp);
+    if (newMdp && !newMdp.states.includes(start)) {
+      setStart(newMdp.states[0]);
     }
-  }
+  }, [start]);
 
   function handleSim() {
     if (!mdp) return;
@@ -104,96 +59,123 @@ export default function Home() {
 
   return (
     <main className="p-6 max-w-6xl mx-auto space-y-6">
-      <h1 className="text-2xl font-semibold">MDP Visualizer & Simulator</h1>
-
-      <section className="grid md:grid-cols-2 gap-6">
-        <div className="space-y-2">
-          <label className="font-medium">MDP JSON</label>
-          <textarea 
-            className="w-full h-64 p-3 border rounded font-mono text-sm" 
-            value={json} 
-            onChange={(e) => setJson(e.target.value)} 
-            placeholder="Enter MDP definition in JSON format..."
+      <section className="space-y-8">
+        {/* MDP Configuration */}
+        <div className="space-y-4">
+          <MDPConfigurator 
+            onMDPChange={handleMDPChange}
+            onError={setError}
           />
-          <button 
-            onClick={handleRender} 
-            className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700 transition-colors"
-          >
-            Render Graph
-          </button>
           {error && (
-            <div className="text-red-600 text-sm mt-2 p-2 bg-red-50 border border-red-200 rounded">
+            <div className="text-red-600 text-sm p-2 bg-red-50 border border-red-200 rounded">
               {error}
             </div>
           )}
         </div>
 
-        <div className="space-y-3">
-          <div className="flex items-center gap-3">
-            <label className="w-32 font-medium">Start state</label>
-            <select 
-              className="border rounded px-2 py-1" 
-              value={start} 
-              onChange={(e) => setStart(e.target.value)} 
-              disabled={!mdp}
+        {/* Monte Carlo Simulation Card */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8">
+          <div className="mb-6">
+            <h3 className="text-xl font-semibold text-gray-800 mb-2">Monte Carlo Simulation</h3>
+            <p className="text-sm text-gray-600">Configure simulation parameters and run Monte Carlo analysis</p>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-700">Start State</label>
+                <select 
+                  className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200" 
+                  value={start} 
+                  onChange={(e) => setStart(e.target.value)} 
+                  disabled={!mdp}
+                >
+                  {(mdp?.states ?? []).map((s) => <option key={s}>{s}</option>)}
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-700">Episodes</label>
+                <input 
+                  type="number" 
+                  className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200" 
+                  value={episodes} 
+                  onChange={(e) => setEpisodes(Number(e.target.value))} 
+                  min={1} 
+                />
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-700">Max Steps per Episode</label>
+                <input 
+                  type="number" 
+                  className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200" 
+                  value={maxSteps} 
+                  onChange={(e) => setMaxSteps(Number(e.target.value))} 
+                  min={1} 
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-700">Histogram Bins</label>
+                <input 
+                  type="number" 
+                  className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200" 
+                  value={bins} 
+                  onChange={(e) => setBins(Number(e.target.value))} 
+                  min={5} 
+                  max={120} 
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-6">
+            <button 
+              onClick={handleSim} 
+              disabled={!canSim} 
+              className={`px-6 py-3 rounded-lg text-white transition-all duration-200 shadow-sm hover:shadow-md ${
+                canSim 
+                  ? "bg-green-600 hover:bg-green-700" 
+                  : "bg-gray-400 cursor-not-allowed"
+              }`}
             >
-              {(mdp?.states ?? []).map((s) => <option key={s}>{s}</option>)}
-            </select>
+              <span className="flex items-center gap-2">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1m4 0h1m-6 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Run Monte Carlo Simulation
+              </span>
+            </button>
           </div>
-
-          <div className="flex items-center gap-3">
-            <label className="w-32 font-medium">Episodes</label>
-            <input 
-              type="number" 
-              className="border rounded px-2 py-1" 
-              value={episodes} 
-              onChange={(e) => setEpisodes(Number(e.target.value))} 
-              min={1} 
-            />
-          </div>
-
-          <div className="flex items-center gap-3">
-            <label className="w-32 font-medium">Max steps/ep</label>
-            <input 
-              type="number" 
-              className="border rounded px-2 py-1" 
-              value={maxSteps} 
-              onChange={(e) => setMaxSteps(Number(e.target.value))} 
-              min={1} 
-            />
-          </div>
-
-          <div className="flex items-center gap-3">
-            <label className="w-32 font-medium">Histogram bins</label>
-            <input 
-              type="number" 
-              className="border rounded px-2 py-1" 
-              value={bins} 
-              onChange={(e) => setBins(Number(e.target.value))} 
-              min={5} 
-              max={120} 
-            />
-          </div>
-
-          <button 
-            onClick={handleSim} 
-            disabled={!canSim} 
-            className={`px-4 py-2 rounded text-white transition-colors ${
-              canSim ? "bg-green-600 hover:bg-green-700" : "bg-gray-400 cursor-not-allowed"
-            }`}
-          >
-            Run Monte Carlo
-          </button>
 
           {result && (
-            <div className="mt-3 space-y-2 text-sm bg-gray-50 p-3 rounded">
-              <div className="grid grid-cols-2 gap-4">
-                <div><b>Episodes:</b> {result.episodes}</div>
-                <div><b>Avg total reward:</b> {result.avgTotalReward.toFixed(3)}</div>
-                <div><b>Avg steps:</b> {result.avgSteps.toFixed(1)}</div>
-                <div><b>Avg path length:</b> {result.pathAnalysis.avgPathLength.toFixed(1)}</div>
+            <div className="mt-6 p-6 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-200">
+              <h4 className="text-lg font-semibold text-gray-800 mb-4">Simulation Results</h4>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                <div className="bg-white p-3 rounded-lg border border-gray-200">
+                  <div className="text-xs text-gray-600 font-medium uppercase tracking-wide">Episodes</div>
+                  <div className="text-lg font-bold text-gray-800">{result.episodes}</div>
+                </div>
+                <div className="bg-white p-3 rounded-lg border border-gray-200">
+                  <div className="text-xs text-gray-600 font-medium uppercase tracking-wide">Avg Reward</div>
+                  <div className="text-lg font-bold text-gray-800">{result.avgTotalReward.toFixed(3)}</div>
+                </div>
+                <div className="bg-white p-3 rounded-lg border border-gray-200">
+                  <div className="text-xs text-gray-600 font-medium uppercase tracking-wide">Avg Steps</div>
+                  <div className="text-lg font-bold text-gray-800">{result.avgSteps.toFixed(1)}</div>
+                </div>
+                <div className="bg-white p-3 rounded-lg border border-gray-200">
+                  <div className="text-xs text-gray-600 font-medium uppercase tracking-wide">Path Length</div>
+                  <div className="text-lg font-bold text-gray-800">{result.pathAnalysis.avgPathLength.toFixed(1)}</div>
+                </div>
               </div>
-              <div><b>Terminal distribution:</b> {terminalPretty}</div>
+              <div className="bg-white p-3 rounded-lg border border-gray-200">
+                <div className="text-xs text-gray-600 font-medium uppercase tracking-wide mb-1">Terminal Distribution</div>
+                <div className="text-sm font-mono text-gray-800">{terminalPretty}</div>
+              </div>
             </div>
           )}
         </div>
@@ -206,7 +188,14 @@ export default function Home() {
             <MDPGraph mdp={mdp} />
           </div>
         ) : (
-          <p className="text-sm text-gray-600">Paste JSON and click "Render Graph" to visualize the MDP.</p>
+          <p className="text-sm text-gray-600">
+            Configure your MDP using the visual configurator above to see the graph.
+          </p>
+        )}
+        {process.env.NODE_ENV === 'development' && (
+          <div className="mt-2 text-xs text-gray-500">
+            Debug: MDP state is {mdp ? 'loaded' : 'null'}
+          </div>
         )}
       </section>
 
