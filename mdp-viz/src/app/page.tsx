@@ -5,7 +5,10 @@ import MDPGraph from "@/components/MDPGraph";
 import DistributionChart from "@/components/DistributionChart";
 import TerminalPie from "@/components/TerminalPie";
 import MDPConfigurator from "@/components/MDPConfigurator";
+import PresetSelector from "@/components/PresetSelector";
+import ResultsInterpreter from "@/components/ResultsInterpreter";
 import { type MDP } from "@/types/mdp";
+import { type PresetExample } from "@/lib/presets";
 import { runMonteCarlo } from "@/lib/sim";
 
 export default function Home() {
@@ -16,6 +19,7 @@ export default function Home() {
   const [bins, setBins] = useState(30);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ReturnType<typeof runMonteCarlo> | null>(null);
+  const [loadedPreset, setLoadedPreset] = useState<string | null>(null);
 
   const canSim = Boolean(mdp && mdp.states.includes(start));
 
@@ -27,7 +31,20 @@ export default function Home() {
     if (newMdp && !newMdp.states.includes(start)) {
       setStart(newMdp.states[0]);
     }
-  }, [start]);
+    // Clear loaded preset when user modifies the configuration
+    if (newMdp && loadedPreset) {
+      setLoadedPreset(null);
+    }
+  }, [start, loadedPreset]);
+
+  const handleLoadPreset = useCallback((preset: PresetExample) => {
+    console.log("Page: Loading preset", preset.name);
+    setError(null);
+    setResult(null);
+    setMdp(preset.mdp);
+    setStart(preset.mdp.states[0]);
+    setLoadedPreset(preset.name);
+  }, []);
 
   function handleSim() {
     if (!mdp) return;
@@ -60,15 +77,44 @@ export default function Home() {
   return (
     <main className="p-6 max-w-6xl mx-auto space-y-6">
       <section className="space-y-8">
+        {/* Preset Examples */}
+        <PresetSelector onLoadPreset={handleLoadPreset} />
+        
         {/* MDP Configuration */}
         <div className="space-y-4">
+          {loadedPreset && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <div className="flex items-center gap-3">
+                <div className="flex-shrink-0">
+                  <svg className="h-5 w-5 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-sm font-medium text-blue-800">Preset Loaded</h3>
+                  <p className="text-sm text-blue-700">Currently using: <span className="font-semibold">{loadedPreset}</span></p>
+                </div>
+              </div>
+            </div>
+          )}
           <MDPConfigurator 
             onMDPChange={handleMDPChange}
             onError={setError}
+            mdp={mdp}
           />
           {error && (
-            <div className="text-red-600 text-sm p-2 bg-red-50 border border-red-200 rounded">
-              {error}
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+              <div className="flex items-start gap-3">
+                <div className="flex-shrink-0">
+                  <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-sm font-medium text-red-800">Configuration Error</h3>
+                  <p className="text-sm text-red-700 mt-1">{error}</p>
+                </div>
+              </div>
             </div>
           )}
         </div>
@@ -201,6 +247,12 @@ export default function Home() {
 
       {result && (
         <>
+          {/* Results Interpretation */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <h2 className="text-xl font-semibold text-gray-800 mb-4">Results Analysis</h2>
+            <ResultsInterpreter result={result} mdp={{ states: mdp!.states, actions: mdp!.actions, gamma: mdp!.gamma || 0.9 }} />
+          </div>
+
           <h2 className="text-xl font-semibold">Monte Carlo Reward Distribution</h2>
           <div className="border rounded p-3 bg-white">
             <DistributionChart values={result.rewards} bins={bins} />

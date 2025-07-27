@@ -1,11 +1,19 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { type MDP, type Transition, validateTransitionMass } from "@/types/mdp";
 
 interface MDPConfiguratorProps {
   onMDPChange: (mdp: MDP | null) => void;
   onError: (error: string | null) => void;
+  mdp?: MDP | null; // Add prop to sync with external MDP
+}
+
+interface ValidationError {
+  type: "probability" | "transition" | "general";
+  message: string;
+  details?: string;
+  field?: string;
 }
 
 interface TransitionConfig {
@@ -20,7 +28,7 @@ interface StateActionConfig {
   };
 }
 
-export default function MDPConfigurator({ onMDPChange, onError }: MDPConfiguratorProps) {
+export default function MDPConfigurator({ onMDPChange, onError, mdp: externalMdp }: MDPConfiguratorProps) {
   const [states, setStates] = useState<string[]>(["S0", "S1", "S2"]);
   const [actions, setActions] = useState<string[]>(["a", "b"]);
   const [gamma, setGamma] = useState<number>(0.95);
@@ -44,9 +52,161 @@ export default function MDPConfigurator({ onMDPChange, onError }: MDPConfigurato
     }
   });
 
+  const isSyncingRef = useRef(false);
+
+  // Sync with external MDP when provided
+  useEffect(() => {
+    if (externalMdp && !isSyncingRef.current) {
+      console.log("MDPConfigurator: Syncing with external MDP", externalMdp);
+      
+      isSyncingRef.current = true;
+      
+      // Update states
+      setStates(externalMdp.states);
+      
+      // Update actions
+      setActions(externalMdp.actions);
+      
+      // Update gamma
+      setGamma(externalMdp.gamma || 0.95);
+      
+      // Update transitions
+      const newTransitions: StateActionConfig = {};
+      
+      for (const state of externalMdp.states) {
+        newTransitions[state] = {};
+        for (const action of externalMdp.actions) {
+          const key = `${state}|${action}`;
+          const transitionList = externalMdp.transitions[key] || [];
+          
+          if (transitionList.length > 0) {
+            newTransitions[state][action] = transitionList.map(t => ({
+              nextState: t.nextState,
+              probability: t.probability,
+              reward: t.reward || 0
+            }));
+          } else {
+            // Default transition if none exists
+            newTransitions[state][action] = [{
+              nextState: externalMdp.states[0],
+              probability: 1.0,
+              reward: 0
+            }];
+          }
+        }
+      }
+      
+      setTransitions(newTransitions);
+      
+      // Clear editing states
+      setEditingStates({});
+      setEditingActions({});
+      
+      // Reset syncing flag after a short delay
+      setTimeout(() => {
+        isSyncingRef.current = false;
+      }, 100);
+    }
+  }, [externalMdp]);
+
+  // Enhanced validation function
+  const validateConfiguration = (): ValidationError[] => {
+    const errors: ValidationError[] = [];
+    
+    // Check for empty states/actions
+    if (states.length === 0) {
+      errors.push({
+        type: "general",
+        message: "At least one state is required",
+        field: "states"
+      });
+    }
+    
+    if (actions.length === 0) {
+      errors.push({
+        type: "general", 
+        message: "At least one action is required",
+        field: "actions"
+      });
+    }
+    
+    // Check for duplicate states/actions
+    const duplicateStates = states.filter((state, index) => states.indexOf(state) !== index);
+    if (duplicateStates.length > 0) {
+      errors.push({
+        type: "general",
+        message: `Duplicate states found: ${duplicateStates.join(", ")}`,
+        field: "states"
+      });
+    }
+    
+    const duplicateActions = actions.filter((action, index) => actions.indexOf(action) !== index);
+    if (duplicateActions.length > 0) {
+      errors.push({
+        type: "general",
+        message: `Duplicate actions found: ${duplicateActions.join(", ")}`,
+        field: "actions"
+      });
+    }
+    
+    // Check gamma value
+    if (gamma < 0 || gamma > 1) {
+      errors.push({
+        type: "general",
+        message: "Gamma must be between 0 and 1",
+        field: "gamma"
+      });
+    }
+    
+    // Check transition probabilities
+    for (const state of states) {
+      for (const action of actions) {
+        const transitionList = transitions[state]?.[action] || [];
+        const totalProb = transitionList.reduce((sum, t) => sum + t.probability, 0);
+        
+        if (transitionList.length > 0 && Math.abs(totalProb - 1.0) > 0.001) {
+          errors.push({
+            type: "probability",
+            message: `Probabilities for ${state}|${action} must sum to 1.0 (currently ${totalProb.toFixed(3)})`,
+            details: `Found ${transitionList.length} transitions with total probability ${totalProb.toFixed(3)}`,
+            field: `${state}|${action}`
+          });
+        }
+        
+        // Check for invalid next states
+        for (const transition of transitionList) {
+          if (!states.includes(transition.nextState)) {
+            errors.push({
+              type: "transition",
+              message: `Invalid next state "${transition.nextState}" in transition from ${state}|${action}`,
+              details: `Available states: ${states.join(", ")}`,
+              field: `${state}|${action}`
+            });
+          }
+        }
+      }
+    }
+    
+    return errors;
+  };
+
   // Update MDP when configuration changes
   useEffect(() => {
+    // Don't update if we're currently syncing from external MDP
+    if (isSyncingRef.current) {
+      return;
+    }
+    
     try {
+      const validationErrors = validateConfiguration();
+      
+      if (validationErrors.length > 0) {
+        const errorMessages = validationErrors.map(e => e.message).join("; ");
+        onError(errorMessages);
+        onMDPChange(null);
+        return;
+      }
+      
       const mdpTransitions: MDP["transitions"] = {};
       
       // Convert our internal format to MDP format
@@ -71,7 +231,7 @@ export default function MDPConfigurator({ onMDPChange, onError }: MDPConfigurato
         gamma
       };
 
-      // Validate transition probabilities
+      // Additional validation using existing function
       const massErrors = validateTransitionMass(mdp);
       if (massErrors.length > 0) {
         onError("Probability mass errors: " + massErrors.join(", "));
