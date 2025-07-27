@@ -1,6 +1,5 @@
 import type { MDP, Transition } from "@/types/mdp";
 import { actionsFromState, transitionsFor } from "@/types/mdp";
-import { runMonteCarlo } from "./sim";
 
 export interface OptimizationResult {
   bestPolicy: Record<string, string>; // state -> action
@@ -62,7 +61,6 @@ export function valueIteration(
       if (actions.length === 0) continue;
 
       let maxValue = -Infinity;
-      let bestAction = actions[0];
 
       for (const action of actions) {
         const transitions = transitionsFor(mdp, state, action);
@@ -76,7 +74,6 @@ export function valueIteration(
 
         if (actionValue > maxValue) {
           maxValue = actionValue;
-          bestAction = action;
         }
       }
 
@@ -100,7 +97,6 @@ export function valueIteration(
     if (actions.length === 0) continue;
 
     let maxValue = -Infinity;
-    let bestAction = actions[0];
 
     for (const action of actions) {
       const transitions = transitionsFor(mdp, state, action);
@@ -114,11 +110,10 @@ export function valueIteration(
 
       if (actionValue > maxValue) {
         maxValue = actionValue;
-        bestAction = action;
       }
     }
 
-    bestPolicy[state] = bestAction;
+    bestPolicy[state] = actions[0]; // Fallback to first action if all are equal
   }
 
   const bestValue = Math.max(...Object.values(valueFunction));
@@ -152,7 +147,7 @@ export function policyIteration(
   let valueFunction: Record<string, number> = {};
 
   // Initialize random policy
-  let policy: Record<string, string> = {};
+  const policy: Record<string, string> = {};
   for (const state of states) {
     const actions = actionsFromState(mdp, state);
     if (actions.length > 0) {
@@ -251,7 +246,6 @@ export function qLearning(
   config: OptimizationConfig = {}
 ): QLearningResult {
   const {
-    maxIterations = 1000,
     learningRate = 0.1,
     gamma = mdp.gamma ?? 0.9,
     epsilon = 0.1,
@@ -376,7 +370,6 @@ export function evaluatePolicy(
   episodes = 1000
 ): { valueFunction: Record<string, number>; avgReward: number } {
   const valueFunction: Record<string, number> = {};
-  const visitCounts: Record<string, number> = {};
   let totalReward = 0;
 
   for (let episode = 0; episode < episodes; episode++) {
@@ -545,7 +538,12 @@ export async function robustOptimizeMDP(
     }
   ];
 
-  const results: Array<{method: string; result: OptimizationResult; validation: any}> = [];
+  const results: Array<{method: string; result: OptimizationResult; validation: {
+    mcReward: number;
+    mcStdDev: number;
+    successRate: number;
+    pathEfficiency: number;
+  }}> = [];
 
   // Try each optimization method
   for (const method of methods) {
@@ -586,10 +584,9 @@ export function monteCarloPolicySearch(
 ): OptimizationResult {
   const { episodes = 1000 } = config;
   const states = mdp.states;
-  const actions = mdp.actions;
   
   // Initialize random policy
-  let policy: Record<string, string> = {};
+  const policy: Record<string, string> = {};
   for (const state of states) {
     const availableActions = actionsFromState(mdp, state);
     if (availableActions.length > 0) {
@@ -748,7 +745,12 @@ function validatePolicyWithMonteCarlo(
 }
 
 // Select best result based on validation
-function selectBestResult(results: Array<{method: string; result: OptimizationResult; validation: any}>) {
+function selectBestResult(results: Array<{method: string; result: OptimizationResult; validation: {
+  mcReward: number;
+  mcStdDev: number;
+  successRate: number;
+  pathEfficiency: number;
+}}>) {
   if (results.length === 0) {
     throw new Error("No optimization methods succeeded");
   }
@@ -771,7 +773,12 @@ function selectBestResult(results: Array<{method: string; result: OptimizationRe
 }
 
 // Calculate confidence in the optimization result
-function calculateConfidence(validation: any): number {
+function calculateConfidence(validation: {
+  mcReward: number;
+  mcStdDev: number;
+  successRate: number;
+  pathEfficiency: number;
+}) {
   const { mcReward, mcStdDev, successRate, pathEfficiency } = validation;
   
   // Higher confidence for:

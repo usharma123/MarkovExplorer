@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   return NextResponse.json({ message: 'MDP API is running' });
 }
 
@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
       message: 'Data received',
       data: body 
     });
-  } catch (error) {
+  } catch {
     return NextResponse.json(
       { error: 'Invalid JSON' },
       { status: 400 }
