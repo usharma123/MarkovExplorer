@@ -30,12 +30,29 @@ export interface OptimizationConfig {
   learningRate?: number;
   epsilon?: number;
   episodes?: number;
+  lambda?: number;
+}
+
+export interface OptimizationProgress {
+  iteration: number;
+  delta: number;
+  valueFunction: Record<string, number>;
+  policy: Record<string, string>;
+  method: string;
+  confidence?: number;
+}
+
+export interface OptimizationCallback {
+  onProgress?: (progress: OptimizationProgress) => void;
+  onComplete?: (result: OptimizationResult) => void;
+  onError?: (error: Error) => void;
 }
 
 // Value Iteration Algorithm
 export function valueIteration(
   mdp: MDP,
-  config: OptimizationConfig = {}
+  config: OptimizationConfig = {},
+  _callback?: OptimizationCallback
 ): ValueIterationResult {
   const {
     maxIterations = 1000,
@@ -85,6 +102,44 @@ export function valueIteration(
     deltaHistory.push(delta);
     convergenceHistory.push(delta);
 
+    // Report progress in real-time
+    if (_callback?.onProgress) {
+      // Extract current policy for progress reporting
+      const currentPolicy: Record<string, string> = {};
+      for (const state of states) {
+        const actions = actionsFromState(mdp, state);
+        if (actions.length === 0) continue;
+
+        let maxValue = -Infinity;
+        let bestAction = actions[0];
+
+        for (const action of actions) {
+          const transitions = transitionsFor(mdp, state, action);
+          let actionValue = 0;
+
+          for (const transition of transitions) {
+            const reward = transition.reward ?? 0;
+            const nextValue = valueFunction[transition.nextState] ?? 0;
+            actionValue += transition.probability * (reward + gamma * nextValue);
+          }
+
+          if (actionValue > maxValue) {
+            maxValue = actionValue;
+            bestAction = action;
+          }
+        }
+        currentPolicy[state] = bestAction;
+      }
+
+      _callback.onProgress({
+        iteration,
+        delta,
+        valueFunction: { ...valueFunction },
+        policy: currentPolicy,
+        method: "Value Iteration"
+      });
+    }
+
     if (delta < tolerance) {
       break;
     }
@@ -132,7 +187,8 @@ export function valueIteration(
 // Policy Iteration Algorithm
 export function policyIteration(
   mdp: MDP,
-  config: OptimizationConfig = {}
+  config: OptimizationConfig = {},
+  _callback?: OptimizationCallback
 ): PolicyIterationResult {
   const {
     maxIterations = 1000,
@@ -243,7 +299,8 @@ export function policyIteration(
 export function qLearning(
   mdp: MDP,
   startState: string,
-  config: OptimizationConfig = {}
+  config: OptimizationConfig = {},
+  _callback?: OptimizationCallback
 ): QLearningResult {
   const {
     learningRate = 0.1,
@@ -362,6 +419,468 @@ export function qLearning(
   };
 }
 
+// SARSA Algorithm (State-Action-Reward-State-Action)
+export function sarsa(
+  mdp: MDP,
+  startState: string,
+  config: OptimizationConfig = {},
+  _callback?: OptimizationCallback
+): QLearningResult {
+  const {
+    learningRate = 0.1,
+    gamma = mdp.gamma ?? 0.9,
+    epsilon = 0.1,
+    episodes = 1000
+  } = config;
+
+  const states = mdp.states;
+  const qTable: Record<string, Record<string, number>> = {};
+  const learningCurve: number[] = [];
+
+  // Initialize Q-table
+  for (const state of states) {
+    const actions = actionsFromState(mdp, state);
+    qTable[state] = {};
+    for (const action of actions) {
+      qTable[state][action] = 0;
+    }
+  }
+
+  for (let episode = 0; episode < episodes; episode++) {
+    let state = startState;
+    let totalReward = 0;
+    let steps = 0;
+    const maxSteps = 100;
+
+    // Choose initial action
+    const actions = actionsFromState(mdp, state);
+    if (actions.length === 0) break;
+
+    let action: string;
+    if (Math.random() < epsilon) {
+      action = actions[Math.floor(Math.random() * actions.length)];
+    } else {
+      action = actions.reduce((best, current) => 
+        (qTable[state][current] ?? 0) > (qTable[state][best] ?? 0) ? current : best
+      );
+    }
+
+    while (steps < maxSteps) {
+      const transitions = transitionsFor(mdp, state, action);
+      if (transitions.length === 0) break;
+
+      // Sample next state
+      const r = Math.random();
+      let acc = 0;
+      let selectedTransition: Transition | null = null;
+      
+      for (const transition of transitions) {
+        acc += transition.probability;
+        if (r <= acc) {
+          selectedTransition = transition;
+          break;
+        }
+      }
+      
+      if (!selectedTransition) {
+        selectedTransition = transitions[transitions.length - 1];
+      }
+
+      const nextState = selectedTransition.nextState;
+      const reward = selectedTransition.reward ?? 0;
+
+      // Choose next action (SARSA is on-policy)
+      const nextActions = actionsFromState(mdp, nextState);
+      let nextAction: string;
+      if (nextActions.length === 0) break;
+
+      if (Math.random() < epsilon) {
+        nextAction = nextActions[Math.floor(Math.random() * nextActions.length)];
+      } else {
+        nextAction = nextActions.reduce((best, current) => 
+          (qTable[nextState][current] ?? 0) > (qTable[nextState][best] ?? 0) ? current : best
+        );
+      }
+
+      // SARSA update: Q(s,a) ← Q(s,a) + α[r + γQ(s',a') - Q(s,a)]
+      const currentQ = qTable[state][action] ?? 0;
+      const nextQ = qTable[nextState][nextAction] ?? 0;
+      qTable[state][action] = currentQ + learningRate * (reward + gamma * nextQ - currentQ);
+
+      totalReward += reward;
+      state = nextState;
+      action = nextAction;
+      steps++;
+    }
+
+    learningCurve.push(totalReward);
+
+    // Report progress
+    if (_callback?.onProgress && episode % 100 === 0) {
+      const currentPolicy: Record<string, string> = {};
+      for (const s of states) {
+        const availableActions = actionsFromState(mdp, s);
+        if (availableActions.length > 0) {
+          currentPolicy[s] = availableActions.reduce((best, current) => 
+            (qTable[s][current] ?? 0) > (qTable[s][best] ?? 0) ? current : best
+          );
+        }
+      }
+
+      _callback.onProgress({
+        iteration: episode,
+        delta: learningCurve[learningCurve.length - 1] - (learningCurve[learningCurve.length - 2] ?? 0),
+        valueFunction: Object.fromEntries(
+          states.map(s => [s, Math.max(...actionsFromState(mdp, s).map(a => qTable[s][a] ?? 0))])
+        ),
+        policy: currentPolicy,
+        method: "SARSA"
+      });
+    }
+  }
+
+  // Extract optimal policy
+  const bestPolicy: Record<string, string> = {};
+  for (const state of states) {
+    const actions = actionsFromState(mdp, state);
+    if (actions.length === 0) continue;
+
+    const bestAction = actions.reduce((best, current) => 
+      (qTable[state][current] ?? 0) > (qTable[state][best] ?? 0) ? current : best
+    );
+    bestPolicy[state] = bestAction;
+  }
+
+  const valueFunction: Record<string, number> = {};
+  for (const state of states) {
+    const actions = actionsFromState(mdp, state);
+    if (actions.length > 0) {
+      valueFunction[state] = Math.max(...actions.map(a => qTable[state][a] ?? 0));
+    }
+  }
+
+  return {
+    bestPolicy,
+    bestValue: Math.max(...Object.values(valueFunction)),
+    iterations: episodes,
+    convergenceHistory: learningCurve,
+    policyHistory: [bestPolicy],
+    valueFunction,
+    qTable,
+    learningCurve
+  };
+}
+
+// Actor-Critic Algorithm
+export function actorCritic(
+  mdp: MDP,
+  startState: string,
+  config: OptimizationConfig = {},
+  _callback?: OptimizationCallback
+): OptimizationResult {
+  const {
+    learningRate = 0.01,
+    gamma = mdp.gamma ?? 0.9,
+    episodes = 1000
+  } = config;
+
+  const states = mdp.states;
+  
+  // Actor: policy parameters (action preferences)
+  const actorParams: Record<string, Record<string, number>> = {};
+  // Critic: value function
+  const criticParams: Record<string, number> = {};
+  const learningCurve: number[] = [];
+
+  // Initialize parameters
+  for (const state of states) {
+    const availableActions = actionsFromState(mdp, state);
+    actorParams[state] = {};
+    for (const action of availableActions) {
+      actorParams[state][action] = 0; // Equal initial preferences
+    }
+    criticParams[state] = 0;
+  }
+
+  for (let episode = 0; episode < episodes; episode++) {
+    let state = startState;
+    let totalReward = 0;
+    let steps = 0;
+    const maxSteps = 100;
+
+    while (steps < maxSteps) {
+      const availableActions = actionsFromState(mdp, state);
+      if (availableActions.length === 0) break;
+
+      // Actor: choose action based on current policy
+      const preferences = availableActions.map(a => actorParams[state][a] ?? 0);
+      const maxPref = Math.max(...preferences);
+      const expPrefs = preferences.map(p => Math.exp(p - maxPref));
+      const sumExp = expPrefs.reduce((sum, exp) => sum + exp, 0);
+      const probs = expPrefs.map(exp => exp / sumExp);
+
+      // Sample action
+      const r = Math.random();
+      let acc = 0;
+      let selectedAction = availableActions[0];
+      for (let i = 0; i < availableActions.length; i++) {
+        acc += probs[i];
+        if (r <= acc) {
+          selectedAction = availableActions[i];
+          break;
+        }
+      }
+
+      const transitions = transitionsFor(mdp, state, selectedAction);
+      if (transitions.length === 0) break;
+
+      // Sample next state
+      const r2 = Math.random();
+      let acc2 = 0;
+      let selectedTransition: Transition | null = null;
+      
+      for (const transition of transitions) {
+        acc2 += transition.probability;
+        if (r2 <= acc2) {
+          selectedTransition = transition;
+          break;
+        }
+      }
+      
+      if (!selectedTransition) {
+        selectedTransition = transitions[transitions.length - 1];
+      }
+
+      const nextState = selectedTransition.nextState;
+      const reward = selectedTransition.reward ?? 0;
+
+      // Critic: compute TD error
+      const currentValue = criticParams[state] ?? 0;
+      const nextValue = criticParams[nextState] ?? 0;
+      const tdError = reward + gamma * nextValue - currentValue;
+
+      // Update critic
+      criticParams[state] = currentValue + learningRate * tdError;
+
+      // Update actor
+      for (const action of availableActions) {
+        const isSelected = action === selectedAction ? 1 : 0;
+        const currentProb = probs[availableActions.indexOf(action)];
+        actorParams[state][action] += learningRate * tdError * (isSelected - currentProb);
+      }
+
+      totalReward += reward;
+      state = nextState;
+      steps++;
+    }
+
+    learningCurve.push(totalReward);
+
+    // Report progress
+    if (_callback?.onProgress && episode % 100 === 0) {
+      const currentPolicy: Record<string, string> = {};
+      for (const s of states) {
+        const availableActions = actionsFromState(mdp, s);
+        if (availableActions.length > 0) {
+          const preferences = availableActions.map(a => actorParams[s][a] ?? 0);
+          const bestAction = availableActions[preferences.indexOf(Math.max(...preferences))];
+          currentPolicy[s] = bestAction;
+        }
+      }
+
+      _callback.onProgress({
+        iteration: episode,
+        delta: learningCurve[learningCurve.length - 1] - (learningCurve[learningCurve.length - 2] ?? 0),
+        valueFunction: { ...criticParams },
+        policy: currentPolicy,
+        method: "Actor-Critic"
+      });
+    }
+  }
+
+  // Extract final policy
+  const bestPolicy: Record<string, string> = {};
+  for (const state of states) {
+    const availableActions = actionsFromState(mdp, state);
+    if (availableActions.length > 0) {
+      const preferences = availableActions.map(a => actorParams[state][a] ?? 0);
+      const bestAction = availableActions[preferences.indexOf(Math.max(...preferences))];
+      bestPolicy[state] = bestAction;
+    }
+  }
+
+  return {
+    bestPolicy,
+    bestValue: Math.max(...Object.values(criticParams)),
+    iterations: episodes,
+    convergenceHistory: learningCurve,
+    policyHistory: [bestPolicy],
+    valueFunction: criticParams
+  };
+}
+
+// TD(λ) Algorithm
+export function tdLambda(
+  mdp: MDP,
+  startState: string,
+  config: OptimizationConfig = {},
+  _callback?: OptimizationCallback
+): OptimizationResult {
+  const {
+    learningRate = 0.1,
+    gamma = mdp.gamma ?? 0.9,
+    lambda = 0.7,
+    episodes = 1000
+  } = config;
+
+  const states = mdp.states;
+  const valueFunction: Record<string, number> = {};
+  const eligibilityTraces: Record<string, number> = {};
+  const learningCurve: number[] = [];
+
+  // Initialize value function
+  for (const state of states) {
+    valueFunction[state] = 0;
+  }
+
+  for (let episode = 0; episode < episodes; episode++) {
+    let state = startState;
+    let totalReward = 0;
+    let steps = 0;
+    const maxSteps = 100;
+
+    // Reset eligibility traces
+    for (const s of states) {
+      eligibilityTraces[s] = 0;
+    }
+
+    while (steps < maxSteps) {
+      const availableActions = actionsFromState(mdp, state);
+      if (availableActions.length === 0) break;
+
+      // Choose action (random for simplicity)
+      const action = availableActions[Math.floor(Math.random() * availableActions.length)];
+      const transitions = transitionsFor(mdp, state, action);
+      
+      if (transitions.length === 0) break;
+
+      // Sample next state
+      const r = Math.random();
+      let acc = 0;
+      let selectedTransition: Transition | null = null;
+      
+      for (const transition of transitions) {
+        acc += transition.probability;
+        if (r <= acc) {
+          selectedTransition = transition;
+          break;
+        }
+      }
+      
+      if (!selectedTransition) {
+        selectedTransition = transitions[transitions.length - 1];
+      }
+
+      const nextState = selectedTransition.nextState;
+      const reward = selectedTransition.reward ?? 0;
+
+      // TD(λ) update
+      const currentValue = valueFunction[state];
+      const nextValue = valueFunction[nextState] ?? 0;
+      const tdError = reward + gamma * nextValue - currentValue;
+
+      // Update eligibility traces
+      eligibilityTraces[state] += 1;
+
+      // Update all states
+      for (const s of states) {
+        if (eligibilityTraces[s] > 0) {
+          valueFunction[s] += learningRate * tdError * eligibilityTraces[s];
+          eligibilityTraces[s] *= gamma * lambda;
+        }
+      }
+
+      totalReward += reward;
+      state = nextState;
+      steps++;
+    }
+
+    learningCurve.push(totalReward);
+
+    // Report progress
+    if (_callback?.onProgress && episode % 100 === 0) {
+      const currentPolicy: Record<string, string> = {};
+      for (const s of states) {
+        const availableActions = actionsFromState(mdp, s);
+        if (availableActions.length > 0) {
+          // Simple policy: choose action that leads to highest value next state
+          let bestAction = availableActions[0];
+          let bestValue = -Infinity;
+          
+          for (const action of availableActions) {
+            const transitions = transitionsFor(mdp, s, action);
+            let actionValue = 0;
+            
+            for (const transition of transitions) {
+              actionValue += transition.probability * (valueFunction[transition.nextState] ?? 0);
+            }
+            
+            if (actionValue > bestValue) {
+              bestValue = actionValue;
+              bestAction = action;
+            }
+          }
+          
+          currentPolicy[s] = bestAction;
+        }
+      }
+
+      _callback.onProgress({
+        iteration: episode,
+        delta: learningCurve[learningCurve.length - 1] - (learningCurve[learningCurve.length - 2] ?? 0),
+        valueFunction: { ...valueFunction },
+        policy: currentPolicy,
+        method: `TD(λ=${lambda})`
+      });
+    }
+  }
+
+  // Extract final policy
+  const bestPolicy: Record<string, string> = {};
+  for (const state of states) {
+    const availableActions = actionsFromState(mdp, state);
+    if (availableActions.length > 0) {
+      let bestAction = availableActions[0];
+      let bestValue = -Infinity;
+      
+      for (const action of availableActions) {
+        const transitions = transitionsFor(mdp, state, action);
+        let actionValue = 0;
+        
+        for (const transition of transitions) {
+          actionValue += transition.probability * (valueFunction[transition.nextState] ?? 0);
+        }
+        
+        if (actionValue > bestValue) {
+          bestValue = actionValue;
+          bestAction = action;
+        }
+      }
+      
+      bestPolicy[state] = bestAction;
+    }
+  }
+
+  return {
+    bestPolicy,
+    bestValue: Math.max(...Object.values(valueFunction)),
+    iterations: episodes,
+    convergenceHistory: learningCurve,
+    policyHistory: [bestPolicy],
+    valueFunction
+  };
+}
+
 // Monte Carlo Policy Evaluation
 export function evaluatePolicy(
   mdp: MDP,
@@ -422,7 +941,8 @@ export function evaluatePolicy(
 export function optimizeMDPConfiguration(
   baseMdp: MDP,
   startState: string,
-  config: OptimizationConfig = {}
+  config: OptimizationConfig = {},
+  callback?: OptimizationCallback
 ): {
   bestMdp: MDP;
   bestResult: OptimizationResult;
@@ -438,7 +958,7 @@ export function optimizeMDPConfiguration(
   
   for (const gamma of gammaValues) {
     const testMdp = { ...baseMdp, gamma };
-    const result = valueIteration(testMdp, config);
+    const result = valueIteration(testMdp, config, callback);
     
     optimizationHistory.push({ mdp: testMdp, result });
     
@@ -466,7 +986,7 @@ export function optimizeMDPConfiguration(
       )
     };
     
-    const result = valueIteration(testMdp, config);
+    const result = valueIteration(testMdp, config, callback);
     
     optimizationHistory.push({ mdp: testMdp, result });
     
@@ -513,28 +1033,29 @@ export interface OptimizationMethod {
 export async function robustOptimizeMDP(
   mdp: MDP,
   startState: string,
-  config: OptimizationConfig = {}
+  config: OptimizationConfig = {},
+  callback?: OptimizationCallback
 ): Promise<RobustOptimizationResult> {
   const methods: OptimizationMethod[] = [
     {
       name: "Value Iteration",
       description: "Classical dynamic programming approach",
-      optimize: async (mdp, startState, config) => valueIteration(mdp, config)
+      optimize: async (mdp, startState, config) => valueIteration(mdp, config, callback)
     },
     {
       name: "Policy Iteration", 
       description: "Iterative policy improvement",
-      optimize: async (mdp, startState, config) => policyIteration(mdp, config)
+      optimize: async (mdp, startState, config) => policyIteration(mdp, config, callback)
     },
     {
       name: "Q-Learning",
       description: "Model-free reinforcement learning",
-      optimize: async (mdp, startState, config) => qLearning(mdp, startState, config)
+      optimize: async (mdp, startState, config) => qLearning(mdp, startState, config, callback)
     },
     {
       name: "Monte Carlo Policy Search",
       description: "Direct policy optimization via simulation",
-      optimize: async (mdp, startState, config) => monteCarloPolicySearch(mdp, startState, config)
+      optimize: async (mdp, startState, config) => monteCarloPolicySearch(mdp, startState, config, callback)
     }
   ];
 
@@ -580,7 +1101,8 @@ export async function robustOptimizeMDP(
 export function monteCarloPolicySearch(
   mdp: MDP,
   startState: string,
-  config: OptimizationConfig = {}
+  config: OptimizationConfig = {},
+  _callback?: OptimizationCallback
 ): OptimizationResult {
   const { episodes = 1000 } = config;
   const states = mdp.states;
@@ -799,7 +1321,8 @@ function calculateConfidence(validation: {
 export function robustOptimizeMDPConfiguration(
   baseMdp: MDP,
   startState: string,
-  config: OptimizationConfig = {}
+  config: OptimizationConfig = {},
+  callback?: OptimizationCallback
 ): Promise<{
   bestMdp: MDP;
   bestResult: RobustOptimizationResult;
@@ -817,7 +1340,7 @@ export function robustOptimizeMDPConfiguration(
     for (const gamma of gammaValues) {
       const testMdp = { ...baseMdp, gamma };
       try {
-        const result = await robustOptimizeMDP(testMdp, startState, config);
+        const result = await robustOptimizeMDP(testMdp, startState, config, callback);
         optimizationHistory.push({ mdp: testMdp, result });
         
         const score = result.actualPerformance * result.confidence;
@@ -849,7 +1372,7 @@ export function robustOptimizeMDPConfiguration(
       };
       
       try {
-        const result = await robustOptimizeMDP(testMdp, startState, config);
+        const result = await robustOptimizeMDP(testMdp, startState, config, callback);
         optimizationHistory.push({ mdp: testMdp, result });
         
         const score = result.actualPerformance * result.confidence;

@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { type MDP, validateTransitionMass } from "@/types/mdp";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 
 interface MDPConfiguratorProps {
   onMDPChange: (mdp: MDP | null) => void;
@@ -651,16 +653,20 @@ export default function MDPConfigurator({ onMDPChange, onError, mdp: externalMdp
                           <div key={index} className="border border-gray-200 rounded-xl p-4 bg-gray-50">
                             <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
                               <div className="space-y-2">
-                                <label className="text-xs text-gray-600 font-semibold uppercase tracking-wide">Next State</label>
-                                <select
+                                <Label className="text-xs text-gray-600 font-semibold uppercase tracking-wide">Next State</Label>
+                                <Select
                                   value={transition.nextState}
-                                  onChange={(e) => updateTransition(state, action, index, 'nextState', e.target.value)}
-                                  className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200"
+                                  onValueChange={(value) => updateTransition(state, action, index, 'nextState', value)}
                                 >
-                                  {states.map(s => (
-                                    <option key={s} value={s}>{s}</option>
-                                  ))}
-                                </select>
+                                  <SelectTrigger className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200">
+                                    <SelectValue placeholder="Select next state" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {states.map(s => (
+                                      <SelectItem key={s} value={s}>{s}</SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
                               </div>
                               
                               <div className="space-y-2">

@@ -125,19 +125,24 @@ export const presetExamples: PresetExample[] = [
       actions: ["Bet $1", "Bet $2", "Bet $3", "Bet $4", "Bet $5"],
       gamma: 0.9,
       transitions: {
+        // State $0 - can't bet anything, stay at $0
         "$0|Bet $1": [{ nextState: "$0", probability: 1.0, reward: 0 }],
         "$0|Bet $2": [{ nextState: "$0", probability: 1.0, reward: 0 }],
         "$0|Bet $3": [{ nextState: "$0", probability: 1.0, reward: 0 }],
         "$0|Bet $4": [{ nextState: "$0", probability: 1.0, reward: 0 }],
         "$0|Bet $5": [{ nextState: "$0", probability: 1.0, reward: 0 }],
+        
+        // State $1 - can only bet $1
         "$1|Bet $1": [
           { nextState: "$2", probability: 0.4, reward: 0 },
           { nextState: "$0", probability: 0.6, reward: 0 }
         ],
-        "$1|Bet $2": [{ nextState: "$1", probability: 1.0, reward: 0 }],
-        "$1|Bet $3": [{ nextState: "$1", probability: 1.0, reward: 0 }],
-        "$1|Bet $4": [{ nextState: "$1", probability: 1.0, reward: 0 }],
-        "$1|Bet $5": [{ nextState: "$1", probability: 1.0, reward: 0 }],
+        "$1|Bet $2": [{ nextState: "$1", probability: 1.0, reward: -1 }], // Invalid bet
+        "$1|Bet $3": [{ nextState: "$1", probability: 1.0, reward: -1 }], // Invalid bet
+        "$1|Bet $4": [{ nextState: "$1", probability: 1.0, reward: -1 }], // Invalid bet
+        "$1|Bet $5": [{ nextState: "$1", probability: 1.0, reward: -1 }], // Invalid bet
+        
+        // State $2 - can bet $1 or $2
         "$2|Bet $1": [
           { nextState: "$3", probability: 0.4, reward: 0 },
           { nextState: "$1", probability: 0.6, reward: 0 }
@@ -146,9 +151,11 @@ export const presetExamples: PresetExample[] = [
           { nextState: "$4", probability: 0.4, reward: 0 },
           { nextState: "$0", probability: 0.6, reward: 0 }
         ],
-        "$2|Bet $3": [{ nextState: "$2", probability: 1.0, reward: 0 }],
-        "$2|Bet $4": [{ nextState: "$2", probability: 1.0, reward: 0 }],
-        "$2|Bet $5": [{ nextState: "$2", probability: 1.0, reward: 0 }],
+        "$2|Bet $3": [{ nextState: "$2", probability: 1.0, reward: -1 }], // Invalid bet
+        "$2|Bet $4": [{ nextState: "$2", probability: 1.0, reward: -1 }], // Invalid bet
+        "$2|Bet $5": [{ nextState: "$2", probability: 1.0, reward: -1 }], // Invalid bet
+        
+        // State $3 - can bet $1, $2, or $3
         "$3|Bet $1": [
           { nextState: "$4", probability: 0.4, reward: 0 },
           { nextState: "$2", probability: 0.6, reward: 0 }
@@ -158,46 +165,50 @@ export const presetExamples: PresetExample[] = [
           { nextState: "$1", probability: 0.6, reward: 0 }
         ],
         "$3|Bet $3": [
-          { nextState: "$6", probability: 0.4, reward: 0 },
+          { nextState: "$0", probability: 0.4, reward: 10 }, // Win condition
           { nextState: "$0", probability: 0.6, reward: 0 }
         ],
-        "$3|Bet $4": [{ nextState: "$3", probability: 1.0, reward: 0 }],
-        "$3|Bet $5": [{ nextState: "$3", probability: 1.0, reward: 0 }],
+        "$3|Bet $4": [{ nextState: "$3", probability: 1.0, reward: -1 }], // Invalid bet
+        "$3|Bet $5": [{ nextState: "$3", probability: 1.0, reward: -1 }], // Invalid bet
+        
+        // State $4 - can bet $1, $2, $3, or $4
         "$4|Bet $1": [
           { nextState: "$5", probability: 0.4, reward: 0 },
           { nextState: "$3", probability: 0.6, reward: 0 }
         ],
         "$4|Bet $2": [
-          { nextState: "$6", probability: 0.4, reward: 0 },
+          { nextState: "$0", probability: 0.4, reward: 10 }, // Win condition
           { nextState: "$2", probability: 0.6, reward: 0 }
         ],
         "$4|Bet $3": [
-          { nextState: "$7", probability: 0.4, reward: 0 },
+          { nextState: "$1", probability: 0.4, reward: 0 },
           { nextState: "$1", probability: 0.6, reward: 0 }
         ],
         "$4|Bet $4": [
-          { nextState: "$8", probability: 0.4, reward: 0 },
+          { nextState: "$0", probability: 0.4, reward: 10 }, // Win condition
           { nextState: "$0", probability: 0.6, reward: 0 }
         ],
-        "$4|Bet $5": [{ nextState: "$4", probability: 1.0, reward: 0 }],
+        "$4|Bet $5": [{ nextState: "$4", probability: 1.0, reward: -1 }], // Invalid bet
+        
+        // State $5 - can bet $1, $2, $3, $4, or $5
         "$5|Bet $1": [
-          { nextState: "$6", probability: 0.4, reward: 0 },
+          { nextState: "$0", probability: 0.4, reward: 10 }, // Win condition
           { nextState: "$4", probability: 0.6, reward: 0 }
         ],
         "$5|Bet $2": [
-          { nextState: "$7", probability: 0.4, reward: 0 },
+          { nextState: "$1", probability: 0.4, reward: 0 },
           { nextState: "$3", probability: 0.6, reward: 0 }
         ],
         "$5|Bet $3": [
-          { nextState: "$8", probability: 0.4, reward: 0 },
+          { nextState: "$2", probability: 0.4, reward: 0 },
           { nextState: "$2", probability: 0.6, reward: 0 }
         ],
         "$5|Bet $4": [
-          { nextState: "$9", probability: 0.4, reward: 0 },
+          { nextState: "$1", probability: 0.4, reward: 0 },
           { nextState: "$1", probability: 0.6, reward: 0 }
         ],
         "$5|Bet $5": [
-          { nextState: "$10", probability: 0.4, reward: 0 },
+          { nextState: "$0", probability: 0.4, reward: 10 }, // Win condition
           { nextState: "$0", probability: 0.6, reward: 0 }
         ]
       }

@@ -16,7 +16,7 @@ export default function TerminalPie({ counts }: { counts: Record<string, number>
 
   return (
     <div className="w-full">
-      <div className="h-64">
+      <div className="h-64 bg-white rounded-lg shadow-lg p-4">
         <ResponsiveContainer>
           <PieChart>
             <Pie 

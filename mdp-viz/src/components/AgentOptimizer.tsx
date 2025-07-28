@@ -1,38 +1,48 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import type { MDP } from "@/types/mdp";
 import { 
   valueIteration, 
   policyIteration, 
-  qLearning, 
+  qLearning,
+  sarsa,
+  actorCritic,
+  tdLambda,
   robustOptimizeMDP,
   robustOptimizeMDPConfiguration,
   type OptimizationResult,
   type RobustOptimizationResult,
-  type OptimizationConfig
+  type OptimizationConfig,
+  type OptimizationProgress
 } from "@/lib/optimizer";
 import { runMonteCarlo, type MonteCarloSummary } from "@/lib/sim";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 
 interface AgentOptimizerProps {
   mdp: MDP;
   startState: string;
   baselineResult?: MonteCarloSummary;
   onOptimizedMdp?: (mdp: MDP) => void;
+  onOptimizationComplete?: (result: OptimizationResult | RobustOptimizationResult) => void;
 }
 
-export default function AgentOptimizer({ mdp, startState, baselineResult: propBaselineResult, onOptimizedMdp }: AgentOptimizerProps) {
-  const [algorithm, setAlgorithm] = useState<"value-iteration" | "policy-iteration" | "q-learning" | "configuration" | "robust">("robust");
+export default function AgentOptimizer({ mdp, startState, baselineResult: propBaselineResult, onOptimizedMdp, onOptimizationComplete }: AgentOptimizerProps) {
+  const [algorithm, setAlgorithm] = useState<"value-iteration" | "policy-iteration" | "q-learning" | "sarsa" | "actor-critic" | "td-lambda" | "configuration" | "robust">("robust");
   const [isRunning, setIsRunning] = useState(false);
   const [baselineResult, setBaselineResult] = useState<MonteCarloSummary | null>(null);
   const [optimizationResult, setOptimizationResult] = useState<OptimizationResult | RobustOptimizationResult | null>(null);
+  const [progressHistory, setProgressHistory] = useState<OptimizationProgress[]>([]);
   const [config, setConfig] = useState<OptimizationConfig>({
     maxIterations: 1000,
     tolerance: 1e-6,
     gamma: mdp.gamma ?? 0.9,
     learningRate: 0.1,
     epsilon: 0.1,
-    episodes: 1000
+    episodes: 1000,
+    lambda: 0.7
   });
 
   // Use the baseline result from props or run our own if not provided
@@ -46,31 +56,62 @@ export default function AgentOptimizer({ mdp, startState, baselineResult: propBa
         setBaselineResult(baseline);
       }
       setOptimizationResult(null);
+      setProgressHistory([]);
     }
   }, [mdp, startState, propBaselineResult]);
+
+  const handleProgress = useCallback((progress: OptimizationProgress) => {
+    setProgressHistory(prev => [...prev, progress]);
+  }, []);
 
   const runOptimization = async () => {
     setIsRunning(true);
     setOptimizationResult(null);
+    setProgressHistory([]);
 
     try {
       let result: OptimizationResult | RobustOptimizationResult;
 
       switch (algorithm) {
         case "robust":
-          result = await robustOptimizeMDP(mdp, startState, config);
+          result = await robustOptimizeMDP(mdp, startState, config, {
+            onProgress: handleProgress
+          });
           break;
         case "value-iteration":
-          result = valueIteration(mdp, config);
+          result = valueIteration(mdp, config, {
+            onProgress: handleProgress
+          });
           break;
         case "policy-iteration":
-          result = policyIteration(mdp, config);
+          result = policyIteration(mdp, config, {
+            onProgress: handleProgress
+          });
           break;
         case "q-learning":
-          result = qLearning(mdp, startState, config);
+          result = qLearning(mdp, startState, config, {
+            onProgress: handleProgress
+          });
+          break;
+        case "sarsa":
+          result = sarsa(mdp, startState, config, {
+            onProgress: handleProgress
+          });
+          break;
+        case "actor-critic":
+          result = actorCritic(mdp, startState, config, {
+            onProgress: handleProgress
+          });
+          break;
+        case "td-lambda":
+          result = tdLambda(mdp, startState, config, {
+            onProgress: handleProgress
+          });
           break;
         case "configuration":
-          const configResult = await robustOptimizeMDPConfiguration(mdp, startState, config);
+          const configResult = await robustOptimizeMDPConfiguration(mdp, startState, config, {
+            onProgress: handleProgress
+          });
           result = configResult.bestResult;
           if (onOptimizedMdp) {
             onOptimizedMdp(configResult.bestMdp);
@@ -81,6 +122,7 @@ export default function AgentOptimizer({ mdp, startState, baselineResult: propBa
       }
 
       setOptimizationResult(result);
+      onOptimizationComplete?.(result);
     } catch (error) {
       console.error("Optimization failed:", error);
     } finally {
@@ -124,422 +166,416 @@ export default function AgentOptimizer({ mdp, startState, baselineResult: propBa
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-md p-6 space-y-6">
-      <div className="border-b pb-4">
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">Agent Optimizer</h2>
-        <p className="text-gray-600">
-          First runs a baseline Monte Carlo simulation, then optimizes the policy for maximum reward using reinforcement learning algorithms.
-        </p>
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8">
+      <div className="mb-6">
+        <h3 className="text-xl font-semibold text-gray-800 mb-2">Agent Optimization</h3>
+        <p className="text-sm text-gray-600">Optimize your MDP using various reinforcement learning algorithms</p>
       </div>
 
-      {/* Loading State */}
-      {isRunning && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <div className="flex items-center gap-3">
-            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
-            <span className="text-blue-800">Running optimization...</span>
+      {/* Algorithm Selection */}
+      <div className="mb-6">
+        <Label className="block text-sm font-medium text-gray-700 mb-2">
+          Optimization Algorithm
+        </Label>
+        <Select
+          value={algorithm}
+          onValueChange={(value) => setAlgorithm(value as "value-iteration" | "policy-iteration" | "q-learning" | "sarsa" | "actor-critic" | "td-lambda" | "configuration" | "robust")}
+          disabled={isRunning}
+        >
+                      <SelectTrigger className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50">
+            <SelectValue placeholder="Select an algorithm" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="robust">Robust Optimization (Recommended)</SelectItem>
+            <SelectItem value="value-iteration">Value Iteration</SelectItem>
+            <SelectItem value="policy-iteration">Policy Iteration</SelectItem>
+            <SelectItem value="q-learning">Q-Learning</SelectItem>
+            <SelectItem value="sarsa">SARSA</SelectItem>
+            <SelectItem value="actor-critic">Actor-Critic</SelectItem>
+            <SelectItem value="td-lambda">TD(λ)</SelectItem>
+            <SelectItem value="configuration">Configuration Optimization</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Configuration Parameters */}
+      <div className="grid grid-cols-2 gap-4 mb-6">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Max Iterations
+          </label>
+          <input
+            type="number"
+            value={config.maxIterations}
+            onChange={(e) => setConfig({ ...config, maxIterations: parseInt(e.target.value) })}
+            disabled={isRunning}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Tolerance
+          </label>
+          <input
+            type="number"
+            step="0.000001"
+            value={config.tolerance}
+            onChange={(e) => setConfig({ ...config, tolerance: parseFloat(e.target.value) })}
+            disabled={isRunning}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Gamma (Discount Factor)
+          </label>
+          <input
+            type="number"
+            step="0.01"
+            min="0"
+            max="1"
+            value={config.gamma}
+            onChange={(e) => setConfig({ ...config, gamma: parseFloat(e.target.value) })}
+            disabled={isRunning}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+          />
+        </div>
+        {algorithm === "q-learning" && (
+          <>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Learning Rate
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                max="1"
+                value={config.learningRate}
+                onChange={(e) => setConfig({ ...config, learningRate: parseFloat(e.target.value) })}
+                disabled={isRunning}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Epsilon (Exploration)
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                max="1"
+                value={config.epsilon}
+                onChange={(e) => setConfig({ ...config, epsilon: parseFloat(e.target.value) })}
+                disabled={isRunning}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Episodes
+              </label>
+              <input
+                type="number"
+                value={config.episodes}
+                onChange={(e) => setConfig({ ...config, episodes: parseInt(e.target.value) })}
+                disabled={isRunning}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+              />
+            </div>
+          </>
+        )}
+        {algorithm === "sarsa" && (
+          <>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Learning Rate
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                max="1"
+                value={config.learningRate}
+                onChange={(e) => setConfig({ ...config, learningRate: parseFloat(e.target.value) })}
+                disabled={isRunning}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Epsilon (Exploration)
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                max="1"
+                value={config.epsilon}
+                onChange={(e) => setConfig({ ...config, epsilon: parseFloat(e.target.value) })}
+                disabled={isRunning}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Episodes
+              </label>
+              <input
+                type="number"
+                value={config.episodes}
+                onChange={(e) => setConfig({ ...config, episodes: parseInt(e.target.value) })}
+                disabled={isRunning}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+              />
+            </div>
+          </>
+        )}
+        {algorithm === "actor-critic" && (
+          <>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Learning Rate
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                max="1"
+                value={config.learningRate}
+                onChange={(e) => setConfig({ ...config, learningRate: parseFloat(e.target.value) })}
+                disabled={isRunning}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Episodes
+              </label>
+              <input
+                type="number"
+                value={config.episodes}
+                onChange={(e) => setConfig({ ...config, episodes: parseInt(e.target.value) })}
+                disabled={isRunning}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+              />
+            </div>
+          </>
+        )}
+        {algorithm === "td-lambda" && (
+          <>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Learning Rate
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                max="1"
+                value={config.learningRate}
+                onChange={(e) => setConfig({ ...config, learningRate: parseFloat(e.target.value) })}
+                disabled={isRunning}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Episodes
+              </label>
+              <input
+                type="number"
+                value={config.episodes}
+                onChange={(e) => setConfig({ ...config, episodes: parseInt(e.target.value) })}
+                disabled={isRunning}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Lambda (TD(λ))
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                max="1"
+                value={config.lambda}
+                onChange={(e) => setConfig({ ...config, lambda: parseFloat(e.target.value) })}
+                disabled={isRunning}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+              />
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Real-time Progress Chart */}
+      {progressHistory.length > 0 && (
+        <div className="mb-6">
+          <h4 className="text-lg font-semibold text-gray-800 mb-3">Optimization Progress</h4>
+          <div className="h-64 bg-white rounded-lg shadow-lg p-4">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={progressHistory}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="iteration" />
+                <YAxis />
+                <Tooltip />
+                <Legend />
+                <Line 
+                  type="monotone" 
+                  dataKey="delta" 
+                  stroke="#3b82f6" 
+                  strokeWidth={2}
+                  name="Convergence Delta"
+                />
+              </LineChart>
+            </ResponsiveContainer>
           </div>
         </div>
       )}
 
-      {/* Algorithm Selection */}
-      <div className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Optimization Algorithm
-          </label>
-          <select
-            value={algorithm}
-            onChange={(e) => setAlgorithm(e.target.value as "value-iteration" | "policy-iteration" | "q-learning" | "configuration" | "robust")}
-            disabled={isRunning}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
-          >
-                    <option value="robust">Robust Optimization (Recommended)</option>
-        <option value="value-iteration">Value Iteration</option>
-        <option value="policy-iteration">Policy Iteration</option>
-        <option value="q-learning">Q-Learning</option>
-        <option value="configuration">Configuration Optimization</option>
-          </select>
-        </div>
-
-        {/* Configuration Parameters */}
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Max Iterations
-            </label>
-            <input
-              type="number"
-              value={config.maxIterations}
-              onChange={(e) => setConfig({ ...config, maxIterations: parseInt(e.target.value) })}
-              disabled={isRunning}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Tolerance
-            </label>
-            <input
-              type="number"
-              step="0.000001"
-              value={config.tolerance}
-              onChange={(e) => setConfig({ ...config, tolerance: parseFloat(e.target.value) })}
-              disabled={isRunning}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Gamma (Discount Factor)
-            </label>
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              max="1"
-              value={config.gamma}
-              onChange={(e) => setConfig({ ...config, gamma: parseFloat(e.target.value) })}
-              disabled={isRunning}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
-            />
-          </div>
-          {algorithm === "q-learning" && (
-            <>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Learning Rate
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  max="1"
-                  value={config.learningRate}
-                  onChange={(e) => setConfig({ ...config, learningRate: parseFloat(e.target.value) })}
-                  disabled={isRunning}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Epsilon (Exploration)
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  max="1"
-                  value={config.epsilon}
-                  onChange={(e) => setConfig({ ...config, epsilon: parseFloat(e.target.value) })}
-                  disabled={isRunning}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Episodes
-                </label>
-                <input
-                  type="number"
-                  value={config.episodes}
-                  onChange={(e) => setConfig({ ...config, episodes: parseInt(e.target.value) })}
-                  disabled={isRunning}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
-                />
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-
       {/* Action Buttons */}
-      <div className="flex space-x-4">
+      <div className="flex gap-4 mb-6">
         <button
           onClick={runOptimization}
           disabled={isRunning}
-          className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          className={`px-6 py-3 rounded-lg text-white transition-all duration-200 shadow-sm hover:shadow-md ${
+            isRunning 
+              ? "bg-gray-400 cursor-not-allowed" 
+              : "bg-blue-600 hover:bg-blue-700"
+          }`}
         >
-          {isRunning ? "Optimizing..." : "Run Optimization"}
+          <span className="flex items-center gap-2">
+            {isRunning ? (
+              <>
+                <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+                Optimizing...
+              </>
+            ) : (
+              <>
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                Run Optimization
+              </>
+            )}
+          </span>
         </button>
+
         {optimizationResult && (
           <button
             onClick={evaluatePolicy}
             disabled={isRunning}
-            className="px-6 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            className={`px-6 py-3 rounded-lg text-white transition-all duration-200 shadow-sm hover:shadow-md ${
+              isRunning 
+                ? "bg-gray-400 cursor-not-allowed" 
+                : "bg-green-600 hover:bg-green-700"
+            }`}
           >
-            Evaluate Policy
+            <span className="flex items-center gap-2">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Evaluate Policy
+            </span>
           </button>
         )}
       </div>
 
-      {/* Baseline Results */}
-      {baselineResult && (
-        <div className="bg-blue-50 rounded-lg p-4 space-y-4">
-          <h3 className="text-lg font-semibold text-gray-900">Baseline Performance</h3>
-          
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <span className="text-sm font-medium text-gray-600">Average Reward:</span>
-              <span className="ml-2 text-lg font-bold text-blue-600">
-                {baselineResult.avgTotalReward.toFixed(4)}
-              </span>
-            </div>
-            <div>
-              <span className="text-sm font-medium text-gray-600">Episodes:</span>
-              <span className="ml-2 text-lg font-bold text-blue-600">
-                {baselineResult.episodes}
-              </span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Optimization Results */}
+      {/* Results Display */}
       {optimizationResult && (
-        <div className="bg-gray-50 rounded-lg p-4 space-y-4">
-          <h3 className="text-lg font-semibold text-gray-900">Optimization Results</h3>
+        <div className="bg-gradient-to-r from-green-50 to-blue-50 rounded-xl border border-green-200 p-6">
+          <h4 className="text-lg font-semibold text-gray-800 mb-4">Optimization Results</h4>
           
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <span className="text-sm font-medium text-gray-600">Best Value:</span>
-              <span className="ml-2 text-lg font-bold text-green-600">
-                {optimizationResult.bestValue.toFixed(4)}
-              </span>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+            <div className="bg-white p-3 rounded-lg border border-gray-200">
+              <div className="text-xs text-gray-600 font-medium uppercase tracking-wide">Method</div>
+              <div className="text-lg font-bold text-gray-800">
+                {('method' in optimizationResult) ? optimizationResult.method : algorithm}
+              </div>
             </div>
-            <div>
-              <span className="text-sm font-medium text-gray-600">Iterations:</span>
-              <span className="ml-2 text-lg font-bold text-blue-600">
-                {optimizationResult.iterations}
-              </span>
+            <div className="bg-white p-3 rounded-lg border border-gray-200">
+              <div className="text-xs text-gray-600 font-medium uppercase tracking-wide">Best Value</div>
+              <div className="text-lg font-bold text-gray-800">{optimizationResult.bestValue.toFixed(3)}</div>
             </div>
-            {'actualPerformance' in optimizationResult && (
-              <>
-                <div>
-                  <span className="text-sm font-medium text-gray-600">Actual Performance:</span>
-                  <span className="ml-2 text-lg font-bold text-purple-600">
-                    {optimizationResult.actualPerformance.toFixed(4)}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-sm font-medium text-gray-600">Confidence:</span>
-                  <span className="ml-2 text-lg font-bold text-blue-600">
-                    {(optimizationResult.confidence * 100).toFixed(1)}%
-                  </span>
-                </div>
-                <div>
-                  <span className="text-sm font-medium text-gray-600">Method Used:</span>
-                  <span className="ml-2 text-lg font-bold text-orange-600">
-                    {optimizationResult.method}
-                  </span>
-                </div>
-              </>
+            <div className="bg-white p-3 rounded-lg border border-gray-200">
+              <div className="text-xs text-gray-600 font-medium uppercase tracking-wide">Iterations</div>
+              <div className="text-lg font-bold text-gray-800">{optimizationResult.iterations}</div>
+            </div>
+            {('confidence' in optimizationResult) && (
+              <div className="bg-white p-3 rounded-lg border border-gray-200">
+                <div className="text-xs text-gray-600 font-medium uppercase tracking-wide">Confidence</div>
+                <div className="text-lg font-bold text-gray-800">{(optimizationResult.confidence * 100).toFixed(1)}%</div>
+              </div>
             )}
           </div>
 
-          {/* Improvement Comparison */}
-          {baselineResult && (
-            <div className="bg-white rounded border p-3">
-              <h4 className="text-md font-semibold text-gray-800 mb-2">Performance Improvement</h4>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <span className="text-sm font-medium text-gray-600">Baseline:</span>
-                  <span className="ml-2 text-lg font-bold text-blue-600">
-                    {baselineResult.avgTotalReward.toFixed(4)}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-sm font-medium text-gray-600">Optimized:</span>
-                  <span className="ml-2 text-lg font-bold text-green-600">
-                    {optimizationResult.bestValue.toFixed(4)}
-                  </span>
-                </div>
-                <div className="col-span-2">
-                  <span className="text-sm font-medium text-gray-600">Improvement:</span>
-                  <span className={`ml-2 text-lg font-bold ${
-                    optimizationResult.bestValue > baselineResult.avgTotalReward 
-                      ? 'text-green-600' 
-                      : 'text-red-600'
-                  }`}>
-                    {((optimizationResult.bestValue - baselineResult.avgTotalReward) / baselineResult.avgTotalReward * 100).toFixed(2)}%
-                  </span>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Optimal Policy */}
-          <div>
-            <h4 className="text-md font-semibold text-gray-800 mb-2">Optimal Policy</h4>
-            <div className="bg-white rounded border p-3 max-h-40 overflow-y-auto">
+          {/* Policy Display */}
+          <div className="bg-white p-4 rounded-lg border border-gray-200">
+            <div className="text-sm font-medium text-gray-700 mb-2">Optimal Policy</div>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-sm">
               {Object.entries(optimizationResult.bestPolicy).map(([state, action]) => (
-                <div key={state} className="flex justify-between py-1">
-                  <span className="font-mono text-sm">{state}</span>
-                  <span className="font-mono text-sm text-blue-600">→</span>
-                  <span className="font-mono text-sm font-semibold">{action}</span>
+                <div key={state} className="flex justify-between">
+                  <span className="font-mono">{state}:</span>
+                  <span className="font-medium">{action}</span>
                 </div>
               ))}
             </div>
           </div>
-
-          {/* Value Function */}
-          <div>
-            <h4 className="text-md font-semibold text-gray-800 mb-2">Value Function</h4>
-            <div className="bg-white rounded border p-3 max-h-40 overflow-y-auto">
-              {Object.entries(optimizationResult.valueFunction).map(([state, value]) => (
-                <div key={state} className="flex justify-between py-1">
-                  <span className="font-mono text-sm">{state}</span>
-                  <span className="font-mono text-sm font-semibold text-green-600">
-                    {value.toFixed(4)}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Validation Results for Robust Optimization */}
-          {'validationResults' in optimizationResult && (
-            <div>
-              <h4 className="text-md font-semibold text-gray-800 mb-2">Validation Results</h4>
-              <div className="bg-white rounded border p-3">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <span className="text-sm font-medium text-gray-600">Success Rate:</span>
-                    <span className="ml-2 text-sm font-bold text-green-600">
-                      {(optimizationResult.validationResults.successRate * 100).toFixed(1)}%
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-sm font-medium text-gray-600">Path Efficiency:</span>
-                    <span className="ml-2 text-sm font-bold text-blue-600">
-                      {optimizationResult.validationResults.pathEfficiency.toFixed(4)}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-sm font-medium text-gray-600">Standard Deviation:</span>
-                    <span className="ml-2 text-sm font-bold text-orange-600">
-                      {optimizationResult.validationResults.mcStdDev.toFixed(4)}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-sm font-medium text-gray-600">Monte Carlo Reward:</span>
-                    <span className="ml-2 text-sm font-bold text-purple-600">
-                      {optimizationResult.validationResults.mcReward.toFixed(4)}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Convergence History */}
-          {optimizationResult.convergenceHistory.length > 0 && (
-            <div>
-              <h4 className="text-md font-semibold text-gray-800 mb-2">Convergence History</h4>
-              <div className="bg-white rounded border p-3">
-                <div className="h-32 flex items-end space-x-1">
-                  {optimizationResult.convergenceHistory.slice(-50).map((value, index) => (
-                    <div
-                      key={index}
-                      className="bg-blue-500 flex-1"
-                      style={{
-                        height: `${Math.max(1, (value / Math.max(...optimizationResult.convergenceHistory)) * 100)}%`
-                      }}
-                    />
-                  ))}
-                </div>
-                <div className="text-xs text-gray-500 mt-2">
-                  Last 50 iterations (max: {Math.max(...optimizationResult.convergenceHistory).toFixed(6)})
-                </div>
-              </div>
-            </div>
-          )}
         </div>
       )}
 
-      {/* Policy Evaluation Results */}
+      {/* Evaluation Results */}
       {evaluationResult && (
-        <div className="bg-green-50 rounded-lg p-4 space-y-4">
-          <h3 className="text-lg font-semibold text-gray-900">Policy Evaluation Results</h3>
+        <div className="mt-6 bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl border border-purple-200 p-6">
+          <h4 className="text-lg font-semibold text-gray-800 mb-4">Policy Evaluation Results</h4>
           
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <span className="text-sm font-medium text-gray-600">Average Reward:</span>
-              <span className="ml-2 text-lg font-bold text-green-600">
-                {evaluationResult.avgTotalReward.toFixed(4)}
-              </span>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+            <div className="bg-white p-3 rounded-lg border border-gray-200">
+              <div className="text-xs text-gray-600 font-medium uppercase tracking-wide">Avg Reward</div>
+              <div className="text-lg font-bold text-gray-800">{evaluationResult.avgTotalReward.toFixed(3)}</div>
             </div>
-            <div>
-              <span className="text-sm font-medium text-gray-600">Episodes:</span>
-              <span className="ml-2 text-lg font-bold text-green-600">
-                {evaluationResult.episodes}
-              </span>
+            <div className="bg-white p-3 rounded-lg border border-gray-200">
+              <div className="text-xs text-gray-600 font-medium uppercase tracking-wide">Avg Steps</div>
+              <div className="text-lg font-bold text-gray-800">{evaluationResult.avgSteps.toFixed(1)}</div>
+            </div>
+            <div className="bg-white p-3 rounded-lg border border-gray-200">
+              <div className="text-xs text-gray-600 font-medium uppercase tracking-wide">Episodes</div>
+              <div className="text-lg font-bold text-gray-800">{evaluationResult.episodes}</div>
+            </div>
+            <div className="bg-white p-3 rounded-lg border border-gray-200">
+              <div className="text-xs text-gray-600 font-medium uppercase tracking-wide">Path Length</div>
+              <div className="text-lg font-bold text-gray-800">{evaluationResult.pathAnalysis.avgPathLength.toFixed(1)}</div>
             </div>
           </div>
 
-          {/* Comparison with Baseline and Optimization */}
-          {baselineResult && optimizationResult && (
-            <div className="bg-white rounded border p-3">
-              <h4 className="text-md font-semibold text-gray-800 mb-2">Performance Comparison</h4>
-              <div className="space-y-2">
-                <div className="flex justify-between">
-                  <span className="text-sm font-medium text-gray-600">Baseline (Random):</span>
-                  <span className="text-sm font-bold text-blue-600">
-                    {baselineResult.avgTotalReward.toFixed(4)}
-                  </span>
+          {/* Comparison with Baseline */}
+          {baselineResult && (
+            <div className="bg-white p-4 rounded-lg border border-gray-200">
+              <div className="text-sm font-medium text-gray-700 mb-2">Performance Comparison</div>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <div className="text-xs text-gray-600">Baseline Avg Reward</div>
+                  <div className="font-bold">{baselineResult.avgTotalReward.toFixed(3)}</div>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-sm font-medium text-gray-600">Theoretical Optimal:</span>
-                  <span className="text-sm font-bold text-purple-600">
-                    {optimizationResult.bestValue.toFixed(4)}
-                  </span>
+                <div>
+                  <div className="text-xs text-gray-600">Optimized Avg Reward</div>
+                  <div className="font-bold">{evaluationResult.avgTotalReward.toFixed(3)}</div>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-sm font-medium text-gray-600">Actual Performance:</span>
-                  <span className="text-sm font-bold text-green-600">
-                    {evaluationResult.avgTotalReward.toFixed(4)}
-                  </span>
-                </div>
-                <div className="border-t pt-2 mt-2">
-                  <div className="flex justify-between">
-                    <span className="text-sm font-medium text-gray-600">Improvement over Random:</span>
-                    <span className={`text-sm font-bold ${
-                      evaluationResult.avgTotalReward > baselineResult.avgTotalReward 
-                        ? 'text-green-600' 
-                        : 'text-red-600'
-                    }`}>
-                      {((evaluationResult.avgTotalReward - baselineResult.avgTotalReward) / baselineResult.avgTotalReward * 100).toFixed(2)}%
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm font-medium text-gray-600">Gap to Optimal:</span>
-                    <span className={`text-sm font-bold ${
-                      evaluationResult.avgTotalReward >= optimizationResult.bestValue * 0.95
-                        ? 'text-green-600' 
-                        : 'text-orange-600'
-                    }`}>
-                      {((optimizationResult.bestValue - evaluationResult.avgTotalReward) / optimizationResult.bestValue * 100).toFixed(2)}%
-                    </span>
+                <div>
+                  <div className="text-xs text-gray-600">Improvement</div>
+                  <div className={`font-bold ${evaluationResult.avgTotalReward > baselineResult.avgTotalReward ? 'text-green-600' : 'text-red-600'}`}>
+                    {((evaluationResult.avgTotalReward - baselineResult.avgTotalReward) / baselineResult.avgTotalReward * 100).toFixed(1)}%
                   </div>
                 </div>
               </div>
             </div>
           )}
-
-          {/* Terminal Distribution */}
-          <div>
-            <h4 className="text-md font-semibold text-gray-800 mb-2">Terminal State Distribution</h4>
-            <div className="bg-white rounded border p-3">
-              <div className="space-y-1">
-                {Object.entries(evaluationResult.terminalDist).map(([state, count]) => (
-                  <div key={state} className="flex justify-between text-sm">
-                    <span className="font-mono">{state}</span>
-                    <span className="font-medium">{count} ({(count / evaluationResult.episodes * 100).toFixed(1)}%)</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
         </div>
       )}
     </div>

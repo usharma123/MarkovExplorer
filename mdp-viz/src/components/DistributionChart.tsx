@@ -42,7 +42,7 @@ export default function DistributionChart({ values, bins = 30 }: { values: numbe
 
   return (
     <div className="w-full">
-      <div className="h-96">
+      <div className="h-96 bg-white rounded-lg shadow-lg p-4">
         <ResponsiveContainer>
           <BarChart data={data} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
             <CartesianGrid strokeDasharray="3 3" />

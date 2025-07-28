@@ -22,7 +22,10 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 /* Custom slider styles */
@@ -65,4 +68,128 @@ body {
   transition-property: color, background-color, border-color, text-decoration-color, fill, stroke, opacity, box-shadow, transform, filter, backdrop-filter;
   transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
   transition-duration: 150ms;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Glass morphism effect */
+.glass {
+  background: rgba(255, 255, 255, 0.25);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+/* Gradient text animation */
+@keyframes gradient-shift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.gradient-animate {
+  background-size: 200% 200%;
+  animation: gradient-shift 3s ease infinite;
+}
+
+/* Hover effects */
+.hover-lift {
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.hover-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+}
+
+/* shadcn/ui custom styles */
+[data-radix-select-trigger] {
+  background: rgb(255, 255, 255) !important;
+  border: 1px solid rgba(209, 213, 219, 0.8) !important;
+  border-radius: 12px !important;
+  transition: all 0.2s ease !important;
+}
+
+[data-radix-select-trigger]:hover {
+  border-color: rgba(59, 130, 246, 0.5) !important;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.1) !important;
+}
+
+[data-radix-select-trigger]:focus {
+  border-color: rgb(59, 130, 246) !important;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1) !important;
+}
+
+[data-radix-select-content] {
+  background: rgb(255, 255, 255) !important;
+  border: 1px solid rgba(209, 213, 219, 0.8) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1) !important;
+  z-index: 1000 !important;
+}
+
+[data-radix-select-item] {
+  border-radius: 8px !important;
+  margin: 2px 4px !important;
+  transition: all 0.2s ease !important;
+}
+
+[data-radix-select-item]:hover {
+  background: rgba(59, 130, 246, 0.1) !important;
+}
+
+[data-radix-select-item][data-highlighted] {
+  background: rgba(59, 130, 246, 0.15) !important;
+}
+
+[data-radix-select-item][data-state="checked"] {
+  background: rgba(59, 130, 246, 0.2) !important;
+  color: rgb(59, 130, 246) !important;
+}
+
+/* Override any backdrop-blur classes */
+.bg-white\/90, .backdrop-blur-sm {
+  background-color: rgb(255, 255, 255) !important;
+  backdrop-filter: none !important;
+}
+
+/* Force solid backgrounds for all select components */
+[data-radix-select-trigger], [data-radix-select-content] {
+  background-color: rgb(255, 255, 255) !important;
+  backdrop-filter: none !important;
+}
+
+/* Chart container fixes */
+.recharts-wrapper {
+  background: white !important;
+  border-radius: 8px !important;
+  overflow: hidden !important;
+}
+
+.recharts-surface {
+  background: white !important;
+}
+
+/* Ensure chart containers have solid backgrounds */
+.chart-container {
+  background: white !important;
+  border-radius: 8px !important;
+  padding: 16px !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1) !important;
 }
